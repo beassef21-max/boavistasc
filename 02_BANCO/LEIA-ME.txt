@@ -1,0 +1,1 @@
+Preencha cadastro_atletas.csv com Name, ExternalId, Posição, Grupo e Ativo.

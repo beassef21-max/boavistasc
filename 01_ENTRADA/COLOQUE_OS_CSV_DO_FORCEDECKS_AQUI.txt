@@ -1,0 +1,1 @@
+Coloque nesta pasta os arquivos CSV exportados do ForceDecks.

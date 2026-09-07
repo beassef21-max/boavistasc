@@ -183,8 +183,9 @@ div[data-testid="stDataFrame"] { border:1px solid #263e2a; border-radius:11px; o
 .stTabs [data-baseweb="tab-list"] { gap:7px; }
 .stTabs [data-baseweb="tab"] { background:#08130c; border:1px solid #233d29; border-radius:8px 8px 0 0; }
 
-/* Relatório para impressão */
-.report-doc { background:#fff; color:#111; border-radius:10px; padding:26px 30px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
+/* Relatório para impressão — o container inteiro vira o "papel" branco,
+   não só o cabeçalho, para que todas as seções fiquem consistentes. */
+.st-key-print_area { background:#fff!important; color:#111!important; border-radius:10px; padding:26px 30px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
 .report-header { display:flex; align-items:center; gap:16px; border-bottom:3px solid #16b52a; padding-bottom:14px; margin-bottom:10px; }
 .report-header img { width:56px; height:64px; object-fit:contain; }
 .report-club { font-size:20px; font-weight:950; color:#0a2f12; letter-spacing:.02em; }
@@ -637,21 +638,20 @@ elif page=="Relatórios":
             filtros_txt=" • ".join(filtros_txt) if filtros_txt else "Elenco completo"
 
             st.markdown(f"""
-            <div class="report-doc">
-              <div class="report-header">
-                <img src="data:image/png;base64,{LOGO_B64}" />
-                <div>
-                  <div class="report-club">{CFG['clube_nome']}</div>
-                  <div class="report-sub">{CFG['clube_subtitulo']}</div>
-                </div>
-                <div class="report-meta">
-                  <div><b>Gerado em</b> {gerado_em}</div>
-                  <div><b>Referência</b> {last_day.strftime('%d/%m/%Y')}</div>
-                </div>
+            <div class="report-header">
+              <img src="data:image/png;base64,{LOGO_B64}" />
+              <div>
+                <div class="report-club">{CFG['clube_nome']}</div>
+                <div class="report-sub">{CFG['clube_subtitulo']}</div>
               </div>
-              <div class="report-title">{titulo_rel}</div>
-              <div class="report-filters">{filtros_txt}</div>
-              {"<div class='report-obs'>"+obs_rel+"</div>" if obs_rel else ""}
+              <div class="report-meta">
+                <div><b>Gerado em</b> {gerado_em}</div>
+                <div><b>Referência</b> {last_day.strftime('%d/%m/%Y')}</div>
+              </div>
+            </div>
+            <div class="report-title">{titulo_rel}</div>
+            <div class="report-filters">{filtros_txt}</div>
+            {"<div class='report-obs'>"+obs_rel+"</div>" if obs_rel else ""}
             """,unsafe_allow_html=True)
 
             if sec_resumo:
@@ -728,7 +728,7 @@ elif page=="Relatórios":
                     """,unsafe_allow_html=True)
                     st.markdown(a[["Data","CMJ","RSI","Δ% Último","Δ% Baseline"]].round(2).to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
 
-            st.markdown(f'<div class="report-footer">{CFG["clube_nome"]} • {CFG["clube_subtitulo"]} • Relatório gerado automaticamente pelo Núcleo de Saúde &amp; Performance</div></div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="report-footer">{CFG["clube_nome"]} • {CFG["clube_subtitulo"]} • Relatório gerado automaticamente pelo Núcleo de Saúde &amp; Performance</div>',unsafe_allow_html=True)
 
         csv_rel=rview.round(2).to_csv(index=False).encode("utf-8-sig")
         st.download_button("⬇️ EXPORTAR DADOS DO RELATÓRIO (CSV)",csv_rel,"boavista_relatorio.csv","text/csv",key="dl_report_csv")

@@ -583,6 +583,10 @@ elif page=="Relatórios":
             rp_periodo=st.date_input("Intervalo",value=(dmin,dmax),min_value=dmin,max_value=dmax,key="rp_periodo")
             titulo_rel=st.text_input("Título do relatório","Relatório de Monitoramento Neuromuscular",key="rp_titulo")
             obs_rel=st.text_area("Observações (opcional)","",height=80,key="rp_obs")
+            st.markdown("**Comparativo entre duas datas**")
+            datas_disponiveis=sorted(d["Data_dia"].unique())
+            rp_data_a=st.selectbox("Data A",datas_disponiveis,index=0,format_func=lambda x:x.strftime("%d/%m/%Y"),key="rp_data_a")
+            rp_data_b=st.selectbox("Data B",datas_disponiveis,index=len(datas_disponiveis)-1,format_func=lambda x:x.strftime("%d/%m/%Y"),key="rp_data_b")
         with fcol3:
             st.markdown("**Seções a incluir**")
             sec_resumo=st.checkbox("Resumo executivo (KPIs)",value=True,key="sec_resumo")
@@ -590,6 +594,7 @@ elif page=="Relatórios":
             sec_alertas=st.checkbox("Atletas em alerta",value=True,key="sec_alertas")
             sec_monitor=st.checkbox("Tabela de monitoramento completa",value=True,key="sec_monitor")
             sec_posicoes=st.checkbox("Análise por posição",value=True,key="sec_posicoes")
+            sec_comp_datas=st.checkbox("Comparativo entre duas datas",value=True,key="sec_comp_datas")
             sec_evolucao=st.checkbox("Evolução do elenco (gráficos)",value=False,key="sec_evolucao")
             sec_atleta=st.checkbox("Perfil individual do(s) atleta(s) selecionado(s)",value=False,key="sec_atleta")
 
@@ -606,6 +611,11 @@ elif page=="Relatórios":
     if rp_pos: hist=hist[hist["Posição"].isin(rp_pos)]
     if rp_grp: hist=hist[hist["Grupo"].isin(rp_grp)]
     if rp_atletas: hist=hist[hist["Atleta"].isin(rp_atletas)]
+
+    base_cmp=d.copy()
+    if rp_pos: base_cmp=base_cmp[base_cmp["Posição"].isin(rp_pos)]
+    if rp_grp: base_cmp=base_cmp[base_cmp["Grupo"].isin(rp_grp)]
+    if rp_atletas: base_cmp=base_cmp[base_cmp["Atleta"].isin(rp_atletas)]
 
     if rview.empty:
         st.warning("Nenhum atleta corresponde aos filtros selecionados.")
@@ -704,6 +714,37 @@ elif page=="Relatórios":
                 st.markdown('<div class="report-section-title">ANÁLISE POR POSIÇÃO</div>',unsafe_allow_html=True)
                 p=rview.groupby("Posição").agg(Atletas=("Atleta","count"),CMJ_médio=("CMJ","mean"),RSI_médio=("RSI","mean"),CMJ_máximo=("CMJ","max"),CMJ_mínimo=("CMJ","min"),Δ_último=("Δ% Último","mean"),Δ_baseline=("Δ% Baseline","mean")).reset_index().round(2)
                 st.markdown(p.to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
+
+            if sec_comp_datas:
+                st.markdown('<div class="report-section-title">COMPARATIVO ENTRE DUAS DATAS</div>',unsafe_allow_html=True)
+                da=base_cmp[base_cmp["Data_dia"]==rp_data_a]
+                db=base_cmp[base_cmp["Data_dia"]==rp_data_b]
+                st.markdown(f'<p class="report-filters">Data A: {rp_data_a.strftime("%d/%m/%Y")} ({len(da)} atletas) &nbsp;vs.&nbsp; Data B: {rp_data_b.strftime("%d/%m/%Y")} ({len(db)} atletas)</p>',unsafe_allow_html=True)
+                if da.empty or db.empty:
+                    st.markdown('<p class="report-empty">Uma das datas selecionadas não possui avaliações no recorte escolhido.</p>',unsafe_allow_html=True)
+                else:
+                    mean_a,mean_b=da["CMJ"].mean(),db["CMJ"].mean()
+                    rsi_a,rsi_b=da["RSI"].mean(),db["RSI"].mean()
+                    st.markdown(f"""
+                    <div class="report-kpi-grid">
+                      <div class="report-kpi"><div class="v">{mean_a:.1f} cm</div><div class="l">CMJ médio — Data A</div></div>
+                      <div class="report-kpi"><div class="v">{mean_b:.1f} cm</div><div class="l">CMJ médio — Data B</div></div>
+                      <div class="report-kpi"><div class="v">{mean_b-mean_a:+.1f} cm</div><div class="l">Δ CMJ (B − A)</div></div>
+                      <div class="report-kpi"><div class="v">{rsi_a:.2f}</div><div class="l">RSI médio — Data A</div></div>
+                      <div class="report-kpi"><div class="v">{rsi_b:.2f}</div><div class="l">RSI médio — Data B</div></div>
+                      <div class="report-kpi"><div class="v">{rsi_b-rsi_a:+.2f}</div><div class="l">Δ RSI (B − A)</div></div>
+                    </div>
+                    """,unsafe_allow_html=True)
+
+                    merged=da[["Atleta","Posição","Grupo","CMJ","RSI"]].merge(
+                        db[["Atleta","CMJ","RSI"]],on="Atleta",how="inner",suffixes=(" (A)"," (B)"))
+                    if merged.empty:
+                        st.markdown('<p class="report-empty">Nenhum atleta foi avaliado nas duas datas selecionadas.</p>',unsafe_allow_html=True)
+                    else:
+                        merged["Δ CMJ"]=merged["CMJ (B)"]-merged["CMJ (A)"]
+                        merged["Δ RSI"]=merged["RSI (B)"]-merged["RSI (A)"]
+                        merged=merged.sort_values("Δ CMJ")
+                        st.markdown(merged.round(2).to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
 
             if sec_evolucao:
                 st.markdown('<div class="report-section-title">EVOLUÇÃO NO PERÍODO</div>',unsafe_allow_html=True)

@@ -702,7 +702,7 @@ elif page=="Relatórios":
 
             if sec_posicoes:
                 st.markdown('<div class="report-section-title">ANÁLISE POR POSIÇÃO</div>',unsafe_allow_html=True)
-                p=rview.groupby("Posição").agg(Atletas=("Atleta","count"),CMJ_médio=("CMJ","mean"),RSI_médio=("RSI","mean"),CMJ_máximo=("CMJ","max"),CMJ_mínimo=("CMJ","min")).reset_index().round(2)
+                p=rview.groupby("Posição").agg(Atletas=("Atleta","count"),CMJ_médio=("CMJ","mean"),RSI_médio=("RSI","mean"),CMJ_máximo=("CMJ","max"),CMJ_mínimo=("CMJ","min"),Δ_último=("Δ% Último","mean"),Δ_baseline=("Δ% Baseline","mean")).reset_index().round(2)
                 st.markdown(p.to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
 
             if sec_evolucao:

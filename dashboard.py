@@ -589,7 +589,7 @@ elif page=="Relatórios":
             sec_regras=st.checkbox("Critérios de classificação RSI",value=True,key="sec_regras")
             sec_alertas=st.checkbox("Atletas em alerta",value=True,key="sec_alertas")
             sec_monitor=st.checkbox("Tabela de monitoramento completa",value=True,key="sec_monitor")
-            sec_posicoes=st.checkbox("Análise por posição",value=False,key="sec_posicoes")
+            sec_posicoes=st.checkbox("Análise por posição",value=True,key="sec_posicoes")
             sec_evolucao=st.checkbox("Evolução do elenco (gráficos)",value=False,key="sec_evolucao")
             sec_atleta=st.checkbox("Perfil individual do(s) atleta(s) selecionado(s)",value=False,key="sec_atleta")
 

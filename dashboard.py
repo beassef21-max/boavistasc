@@ -595,6 +595,7 @@ elif page=="Relatórios":
             sec_monitor=st.checkbox("Tabela de monitoramento completa",value=True,key="sec_monitor")
             sec_posicoes=st.checkbox("Análise por posição",value=True,key="sec_posicoes")
             sec_comp_datas=st.checkbox("Comparativo entre duas datas",value=True,key="sec_comp_datas")
+            sec_ranking_mensal=st.checkbox("Ranking mensal (Top 5 CMJ e RSI)",value=True,key="sec_ranking_mensal")
             sec_evolucao=st.checkbox("Evolução do elenco (gráficos)",value=False,key="sec_evolucao")
             sec_atleta=st.checkbox("Perfil individual do(s) atleta(s) selecionado(s)",value=False,key="sec_atleta")
 
@@ -745,6 +746,35 @@ elif page=="Relatórios":
                         merged["Δ RSI"]=merged["RSI (B)"]-merged["RSI (A)"]
                         merged=merged.sort_values("Δ CMJ")
                         st.markdown(merged.round(2).to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
+
+            if sec_ranking_mensal:
+                st.markdown('<div class="report-section-title">RANKING MENSAL — TOP 5 CMJ E RSI</div>',unsafe_allow_html=True)
+                st.markdown('<p class="report-filters">Considera o melhor resultado de cada atleta dentro do mês.</p>',unsafe_allow_html=True)
+                meses_rank=[(6,"JUNHO"),(7,"JULHO"),(8,"AGOSTO"),(9,"SETEMBRO")]
+                for mes_num,mes_nome in meses_rank:
+                    mes_df=base_cmp[base_cmp["Data"].dt.month==mes_num]
+                    st.markdown(f'<p style="font-weight:900;font-size:13px;color:#0a2f12;margin:16px 0 6px;text-transform:uppercase;">{mes_nome}</p>',unsafe_allow_html=True)
+                    if mes_df.empty:
+                        st.markdown('<p class="report-empty">Sem avaliações neste mês no recorte selecionado.</p>',unsafe_allow_html=True)
+                        continue
+                    melhor=mes_df.groupby("Atleta").agg(Posição=("Posição","first"),CMJ=("CMJ","max"),RSI=("RSI","max")).reset_index()
+                    top_cmj=melhor.sort_values("CMJ",ascending=False).head(5)[["Atleta","Posição","CMJ"]].reset_index(drop=True).round(2)
+                    top_cmj.insert(0,"#",range(1,len(top_cmj)+1))
+                    top_rsi=melhor.dropna(subset=["RSI"]).sort_values("RSI",ascending=False).head(5)[["Atleta","Posição","RSI"]].reset_index(drop=True).round(2)
+                    top_rsi.insert(0,"#",range(1,len(top_rsi)+1))
+                    rsi_html=top_rsi.to_html(index=False,classes="report-table",border=0) if not top_rsi.empty else '<p class="report-empty">Sem dados de RSI neste mês.</p>'
+                    st.markdown(f"""
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                      <div style="flex:1;min-width:260px;">
+                        <p style="font-weight:800;font-size:11px;color:#2f7a3a;margin:0 0 4px;text-transform:uppercase;">Top 5 — CMJ</p>
+                        {top_cmj.to_html(index=False,classes="report-table",border=0)}
+                      </div>
+                      <div style="flex:1;min-width:260px;">
+                        <p style="font-weight:800;font-size:11px;color:#2f7a3a;margin:0 0 4px;text-transform:uppercase;">Top 5 — RSI</p>
+                        {rsi_html}
+                      </div>
+                    </div>
+                    """,unsafe_allow_html=True)
 
             if sec_evolucao:
                 st.markdown('<div class="report-section-title">EVOLUÇÃO NO PERÍODO</div>',unsafe_allow_html=True)

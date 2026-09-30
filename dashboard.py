@@ -289,11 +289,10 @@ d["Δ% Máximo"]=(d["CMJ"]-d["Máximo histórico"])/d["Máximo histórico"]*100
 d["Δ% Baseline"]=(d["CMJ"]-d["Baseline"])/d["Baseline"]*100
 
 last_day=d["Data_dia"].max()
-today=d[d["Data_dia"]==last_day].copy()
+DATAS=sorted(d["Data_dia"].unique())
 
-stats=today.groupby("Posição")["CMJ"].agg(["mean","std"]).rename(columns={"mean":"Média posição","std":"DP posição"})
-today=today.join(stats,on="Posição")
-today["Z-score posição"]=(today["CMJ"]-today["Média posição"])/today["DP posição"].replace(0,np.nan)
+def fmt_data(x):
+    return x.strftime("%d/%m/%Y")
 
 def cmj_status(v):
     if pd.isna(v): return "Sem baseline"
@@ -313,9 +312,15 @@ def rsi_badge(v):
     if v < CFG["rsi_adequado"]: return "🟡 Atenção"
     return "🟢 Adequado"
 
-today["Status"]=today["Δ% Baseline"].apply(cmj_status)
-today["Status RSI"]=today["RSI"].apply(rsi_status)
-today["RSI Classificação"]=today["RSI"].apply(rsi_badge)
+def snapshot(dia):
+    s=d[d["Data_dia"]==dia].copy()
+    stats=s.groupby("Posição")["CMJ"].agg(["mean","std"]).rename(columns={"mean":"Média posição","std":"DP posição"})
+    s=s.join(stats,on="Posição")
+    s["Z-score posição"]=(s["CMJ"]-s["Média posição"])/s["DP posição"].replace(0,np.nan)
+    s["Status"]=s["Δ% Baseline"].apply(cmj_status)
+    s["Status RSI"]=s["RSI"].apply(rsi_status)
+    s["RSI Classificação"]=s["RSI"].apply(rsi_badge)
+    return s
 
 # ============================================================
 # SIDEBAR
@@ -330,17 +335,22 @@ MODULES=["Dashboard","Ciência","Desempenho","Prevenção","Resultados","Atletas
 page=st.sidebar.radio("MÓDULO",MODULES,index=0)
 
 st.sidebar.markdown("---")
-positions=sorted(today["Posição"].dropna().unique())
-groups=sorted(today["Grupo"].dropna().unique())
+positions=sorted(d["Posição"].dropna().unique())
+groups=sorted(d["Grupo"].dropna().unique())
 PAGES_WITH_FILTER=["Dashboard","Ciência","Desempenho","Prevenção","Resultados"]
+ref_day=last_day
+fpos,fgrp=[],[]
 if page in PAGES_WITH_FILTER:
+    ref_day=st.sidebar.selectbox("DATA DE REFERÊNCIA",DATAS,index=len(DATAS)-1,format_func=fmt_data,key="ref_day")
     fpos=st.sidebar.multiselect("POSIÇÃO",positions)
     fgrp=st.sidebar.multiselect("GRUPO",groups)
-    view=today.copy()
-    if fpos: view=view[view["Posição"].isin(fpos)]
-    if fgrp: view=view[view["Grupo"].isin(fgrp)]
-else:
-    view=today.copy()
+today=snapshot(ref_day)
+view=today.copy()
+if fpos: view=view[view["Posição"].isin(fpos)]
+if fgrp: view=view[view["Grupo"].isin(fgrp)]
+hist_ref=d[d["Data_dia"]<=ref_day]
+if fpos: hist_ref=hist_ref[hist_ref["Posição"].isin(fpos)]
+if fgrp: hist_ref=hist_ref[hist_ref["Grupo"].isin(fgrp)]
 
 st.sidebar.markdown(f'<div class="sidebar-footer">{CFG["clube_nome"]}<small>VERDÃO DE SAQUAREMA</small></div>',unsafe_allow_html=True)
 st.sidebar.caption(f"Última atualização: {last_day.strftime('%d/%m/%Y')}")
@@ -360,7 +370,7 @@ header=f"""
   <div class="hero-meta">
     <div><div class="label">MÓDULO</div><div class="value">{page.upper()}</div></div>
     <div class="divider"></div>
-    <div><div class="label">DATA REF.</div><div class="value">{last_day.strftime('%d/%m/%Y')}</div></div>
+    <div><div class="label">DATA REF.</div><div class="value">{fmt_data(ref_day)}</div></div>
   </div>
 </div>
 """
@@ -377,7 +387,7 @@ if page=="Dashboard":
     rsi_yellow=((view["RSI"]>=CFG["rsi_atencao"])&(view["RSI"]<CFG["rsi_adequado"])).sum()
     rsi_red=(view["RSI"]<CFG["rsi_atencao"]).sum()
     cmj_alert=(view["Status"].isin(["Atenção","Atenção elevada"])).sum()
-    evaluations=len(d[d["Data_dia"]==last_day])
+    evaluations=len(d[d["Data_dia"]==ref_day])
     mx=view["CMJ"].max()
 
     cards=[
@@ -398,12 +408,12 @@ if page=="Dashboard":
         with a:
             st.markdown('<div class="big-label">CMJ MÉDIO</div>',unsafe_allow_html=True)
             st.markdown(f'<div class="big-number">{mean:.1f}<span class="unit"> cm</span></div>',unsafe_allow_html=True)
-            mini=view.groupby("Data_dia")["CMJ"].mean().tail(14).to_frame("CMJ")
+            mini=hist_ref.groupby("Data_dia")["CMJ"].mean().tail(14).to_frame("CMJ")
             if not mini.empty: st.line_chart(mini,height=120,use_container_width=True)
         with b:
             st.markdown('<div class="big-label">RSI MÉDIO</div>',unsafe_allow_html=True)
             st.markdown(f'<div class="big-number">{rsi_mean:.2f}</div>',unsafe_allow_html=True)
-            mini=view.groupby("Data_dia")["RSI"].mean().dropna().tail(14).to_frame("RSI")
+            mini=hist_ref.groupby("Data_dia")["RSI"].mean().dropna().tail(14).to_frame("RSI")
             if not mini.empty: st.line_chart(mini,height=120,use_container_width=True)
         with c:
             st.markdown('<div class="big-label">CLASSIFICAÇÃO RSI</div><br>',unsafe_allow_html=True)
@@ -500,7 +510,7 @@ elif page=="Prevenção":
     else:
         st.dataframe(risk[["Atleta","Posição","Grupo","CMJ","RSI","RSI Classificação","Δ% Baseline","Status"]].round(2),use_container_width=True,hide_index=True,height=420)
     st.markdown('<div class="section-title">EVOLUÇÃO DE ALERTAS (ELENCO)</div>',unsafe_allow_html=True)
-    alert_hist=d.copy()
+    alert_hist=hist_ref.copy()
     alert_hist["Em alerta"]=alert_hist["Δ% Baseline"]<=CFG["cmj_atencao"]
     trend=alert_hist.groupby("Data_dia")["Em alerta"].sum().to_frame("Atletas em alerta")
     if not trend.empty: st.line_chart(trend,use_container_width=True,height=280)
@@ -578,15 +588,19 @@ elif page=="Relatórios":
             rp_grp=st.multiselect("Grupo",groups,key="rp_grp")
             rp_atletas=st.multiselect("Atletas específicos (opcional)",sorted(d["Atleta"].unique()),key="rp_atletas")
         with fcol2:
-            st.markdown("**Período (histórico/gráficos)**")
             dmin,dmax=d["Data"].min().date(),d["Data"].max().date()
+            st.markdown("**Data de referência**")
+            rp_ref=st.selectbox("Avaliação usada em resumo, alertas, monitoramento e posições",DATAS,index=len(DATAS)-1,format_func=fmt_data,key="rp_ref")
+            st.markdown("**Comparativo entre dois períodos**")
+            ini_ultimo_mes=max(dmin,dmax.replace(day=1))
+            fim_primeiro_mes=min(dmax,(pd.Timestamp(dmin)+pd.offsets.MonthEnd(0)).date())
+            rp_per_a=st.date_input("Período A",value=(dmin,fim_primeiro_mes),min_value=dmin,max_value=dmax,key="rp_per_a")
+            rp_per_b=st.date_input("Período B",value=(ini_ultimo_mes,dmax),min_value=dmin,max_value=dmax,key="rp_per_b")
+            rp_modo=st.radio("Valor de cada atleta no período",["Média","Melhor resultado"],horizontal=True,key="rp_modo")
+            st.markdown("**Período dos gráficos de evolução**")
             rp_periodo=st.date_input("Intervalo",value=(dmin,dmax),min_value=dmin,max_value=dmax,key="rp_periodo")
             titulo_rel=st.text_input("Título do relatório","Relatório de Monitoramento Neuromuscular",key="rp_titulo")
             obs_rel=st.text_area("Observações (opcional)","",height=80,key="rp_obs")
-            st.markdown("**Comparativo entre duas datas**")
-            datas_disponiveis=sorted(d["Data_dia"].unique())
-            rp_data_a=st.selectbox("Data A",datas_disponiveis,index=0,format_func=lambda x:x.strftime("%d/%m/%Y"),key="rp_data_a")
-            rp_data_b=st.selectbox("Data B",datas_disponiveis,index=len(datas_disponiveis)-1,format_func=lambda x:x.strftime("%d/%m/%Y"),key="rp_data_b")
         with fcol3:
             st.markdown("**Seções a incluir**")
             sec_resumo=st.checkbox("Resumo executivo (KPIs)",value=True,key="sec_resumo")
@@ -594,12 +608,12 @@ elif page=="Relatórios":
             sec_alertas=st.checkbox("Atletas em alerta",value=True,key="sec_alertas")
             sec_monitor=st.checkbox("Tabela de monitoramento completa",value=True,key="sec_monitor")
             sec_posicoes=st.checkbox("Análise por posição",value=True,key="sec_posicoes")
-            sec_comp_datas=st.checkbox("Comparativo entre duas datas",value=True,key="sec_comp_datas")
+            sec_comp_datas=st.checkbox("Comparativo entre dois períodos",value=True,key="sec_comp_datas")
             sec_ranking_mensal=st.checkbox("Ranking mensal (Top 5 CMJ e RSI)",value=True,key="sec_ranking_mensal")
             sec_evolucao=st.checkbox("Evolução do elenco (gráficos)",value=False,key="sec_evolucao")
             sec_atleta=st.checkbox("Perfil individual do(s) atleta(s) selecionado(s)",value=False,key="sec_atleta")
 
-    rview=today.copy()
+    rview=snapshot(rp_ref)
     if rp_pos: rview=rview[rview["Posição"].isin(rp_pos)]
     if rp_grp: rview=rview[rview["Grupo"].isin(rp_grp)]
     if rp_atletas: rview=rview[rview["Atleta"].isin(rp_atletas)]
@@ -657,7 +671,7 @@ elif page=="Relatórios":
               </div>
               <div class="report-meta">
                 <div><b>Gerado em</b> {gerado_em}</div>
-                <div><b>Referência</b> {last_day.strftime('%d/%m/%Y')}</div>
+                <div><b>Referência</b> {fmt_data(rp_ref)}</div>
               </div>
             </div>
             <div class="report-title">{titulo_rel}</div>
@@ -717,35 +731,44 @@ elif page=="Relatórios":
                 st.markdown(p.to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
 
             if sec_comp_datas:
-                st.markdown('<div class="report-section-title">COMPARATIVO ENTRE DUAS DATAS</div>',unsafe_allow_html=True)
-                da=base_cmp[base_cmp["Data_dia"]==rp_data_a]
-                db=base_cmp[base_cmp["Data_dia"]==rp_data_b]
-                st.markdown(f'<p class="report-filters">Data A: {rp_data_a.strftime("%d/%m/%Y")} ({len(da)} atletas) &nbsp;vs.&nbsp; Data B: {rp_data_b.strftime("%d/%m/%Y")} ({len(db)} atletas)</p>',unsafe_allow_html=True)
-                if da.empty or db.empty:
-                    st.markdown('<p class="report-empty">Uma das datas selecionadas não possui avaliações no recorte escolhido.</p>',unsafe_allow_html=True)
+                st.markdown('<div class="report-section-title">COMPARATIVO ENTRE DOIS PERÍODOS</div>',unsafe_allow_html=True)
+                def _intervalo(v):
+                    return (v[0],v[1]) if isinstance(v,(tuple,list)) and len(v)==2 else None
+                pa,pb=_intervalo(rp_per_a),_intervalo(rp_per_b)
+                if pa is None or pb is None:
+                    st.markdown('<p class="report-empty">Selecione a data inicial e a final de cada período.</p>',unsafe_allow_html=True)
                 else:
-                    mean_a,mean_b=da["CMJ"].mean(),db["CMJ"].mean()
-                    rsi_a,rsi_b=da["RSI"].mean(),db["RSI"].mean()
-                    st.markdown(f"""
-                    <div class="report-kpi-grid">
-                      <div class="report-kpi"><div class="v">{mean_a:.1f} cm</div><div class="l">CMJ médio — Data A</div></div>
-                      <div class="report-kpi"><div class="v">{mean_b:.1f} cm</div><div class="l">CMJ médio — Data B</div></div>
-                      <div class="report-kpi"><div class="v">{mean_b-mean_a:+.1f} cm</div><div class="l">Δ CMJ (B − A)</div></div>
-                      <div class="report-kpi"><div class="v">{rsi_a:.2f}</div><div class="l">RSI médio — Data A</div></div>
-                      <div class="report-kpi"><div class="v">{rsi_b:.2f}</div><div class="l">RSI médio — Data B</div></div>
-                      <div class="report-kpi"><div class="v">{rsi_b-rsi_a:+.2f}</div><div class="l">Δ RSI (B − A)</div></div>
-                    </div>
-                    """,unsafe_allow_html=True)
-
-                    merged=da[["Atleta","Posição","Grupo","CMJ","RSI"]].merge(
-                        db[["Atleta","CMJ","RSI"]],on="Atleta",how="inner",suffixes=(" (A)"," (B)"))
-                    if merged.empty:
-                        st.markdown('<p class="report-empty">Nenhum atleta foi avaliado nas duas datas selecionadas.</p>',unsafe_allow_html=True)
+                    da=base_cmp[(base_cmp["Data_dia"]>=pa[0])&(base_cmp["Data_dia"]<=pa[1])]
+                    db=base_cmp[(base_cmp["Data_dia"]>=pb[0])&(base_cmp["Data_dia"]<=pb[1])]
+                    agg="max" if rp_modo=="Melhor resultado" else "mean"
+                    rotulo="melhor resultado" if agg=="max" else "média"
+                    st.markdown(f'<p class="report-filters">Período A: {fmt_data(pa[0])} a {fmt_data(pa[1])} ({da["Atleta"].nunique()} atletas, {len(da)} testes) &nbsp;vs.&nbsp; Período B: {fmt_data(pb[0])} a {fmt_data(pb[1])} ({db["Atleta"].nunique()} atletas, {len(db)} testes) — valor por atleta: {rotulo} no período</p>',unsafe_allow_html=True)
+                    if da.empty or db.empty:
+                        st.markdown('<p class="report-empty">Um dos períodos não possui avaliações no recorte escolhido.</p>',unsafe_allow_html=True)
                     else:
-                        merged["Δ CMJ"]=merged["CMJ (B)"]-merged["CMJ (A)"]
-                        merged["Δ RSI"]=merged["RSI (B)"]-merged["RSI (A)"]
-                        merged=merged.sort_values("Δ CMJ")
-                        st.markdown(merged.round(2).to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
+                        ga=da.groupby("Atleta").agg(Posição=("Posição","first"),CMJ=("CMJ",agg),RSI=("RSI",agg),Testes=("CMJ","size"))
+                        gb=db.groupby("Atleta").agg(CMJ=("CMJ",agg),RSI=("RSI",agg),Testes=("CMJ","size"))
+                        merged=ga.join(gb,how="inner",lsuffix=" (A)",rsuffix=" (B)").reset_index()
+                        if merged.empty:
+                            st.markdown('<p class="report-empty">Nenhum atleta foi avaliado nos dois períodos.</p>',unsafe_allow_html=True)
+                        else:
+                            merged["Δ CMJ"]=merged["CMJ (B)"]-merged["CMJ (A)"]
+                            merged["Δ% CMJ"]=merged["Δ CMJ"]/merged["CMJ (A)"]*100
+                            merged["Δ RSI"]=merged["RSI (B)"]-merged["RSI (A)"]
+                            cmj_a,cmj_b=merged["CMJ (A)"].mean(),merged["CMJ (B)"].mean()
+                            rsi_a,rsi_b=merged["RSI (A)"].mean(),merged["RSI (B)"].mean()
+                            melhoraram=int((merged["Δ CMJ"]>0).sum())
+                            st.markdown(f"""
+                            <div class="report-kpi-grid">
+                              <div class="report-kpi"><div class="v">{cmj_a:.1f} cm</div><div class="l">CMJ — Período A</div></div>
+                              <div class="report-kpi"><div class="v">{cmj_b:.1f} cm</div><div class="l">CMJ — Período B</div></div>
+                              <div class="report-kpi"><div class="v">{cmj_b-cmj_a:+.1f} cm</div><div class="l">Δ CMJ (B − A)</div></div>
+                              <div class="report-kpi"><div class="v">{rsi_a:.2f} → {rsi_b:.2f}</div><div class="l">RSI (A → B)</div></div>
+                              <div class="report-kpi"><div class="v">{melhoraram}/{len(merged)}</div><div class="l">Atletas que melhoraram o CMJ</div></div>
+                            </div>
+                            """,unsafe_allow_html=True)
+                            cols=["Atleta","Posição","Testes (A)","CMJ (A)","RSI (A)","Testes (B)","CMJ (B)","RSI (B)","Δ CMJ","Δ% CMJ","Δ RSI"]
+                            st.markdown(merged[cols].sort_values("Δ CMJ").round(2).to_html(index=False,classes="report-table",border=0),unsafe_allow_html=True)
 
             if sec_ranking_mensal:
                 st.markdown('<div class="report-section-title">RANKING MENSAL — TOP 5 CMJ E RSI</div>',unsafe_allow_html=True)
@@ -816,18 +839,32 @@ elif page=="Comparativos":
     if len(cmp_atletas)<2:
         st.info("Selecione ao menos 2 atletas para comparar.")
     else:
-        cd=d[d["Atleta"].isin(cmp_atletas)]
-        latest=cd.sort_values("Data").groupby("Atleta").tail(1)
-        st.markdown('<div class="section-title" style="font-size:14px;">SITUAÇÃO ATUAL</div>',unsafe_allow_html=True)
-        st.dataframe(latest[["Atleta","Posição","CMJ","RSI","RSI Classificação","Baseline","Δ% Baseline"]].round(2),use_container_width=True,hide_index=True)
+        cmin,cmax=d["Data"].min().date(),d["Data"].max().date()
+        cmp_per=st.date_input("Período",value=(cmin,cmax),min_value=cmin,max_value=cmax,key="cmp_per")
+        if isinstance(cmp_per,(tuple,list)) and len(cmp_per)==2:
+            p_ini,p_fim=cmp_per
+        else:
+            p_ini,p_fim=cmin,cmax
+        cd=d[d["Atleta"].isin(cmp_atletas)&(d["Data_dia"]>=p_ini)&(d["Data_dia"]<=p_fim)].sort_values("Data")
+        if cd.empty:
+            st.warning("Nenhuma avaliação desses atletas no período selecionado.")
+            st.stop()
+        resumo=cd.groupby("Atleta").agg(Posição=("Posição","first"),Testes=("CMJ","size"),
+            CMJ_primeiro=("CMJ","first"),CMJ_último=("CMJ","last"),CMJ_médio=("CMJ","mean"),CMJ_melhor=("CMJ","max"),
+            RSI_primeiro=("RSI","first"),RSI_último=("RSI","last"),RSI_médio=("RSI","mean")).reset_index()
+        resumo["Δ CMJ (último − primeiro)"]=resumo["CMJ_último"]-resumo["CMJ_primeiro"]
+        resumo["Δ RSI (último − primeiro)"]=resumo["RSI_último"]-resumo["RSI_primeiro"]
+        resumo["RSI Classificação"]=resumo["RSI_último"].apply(rsi_badge)
+        st.markdown(f'<div class="section-title" style="font-size:14px;">RESUMO DO PERÍODO — {fmt_data(p_ini)} A {fmt_data(p_fim)}</div>',unsafe_allow_html=True)
+        st.dataframe(resumo.round(2),use_container_width=True,hide_index=True)
         c1,c2=st.columns(2)
         with c1:
             st.markdown('<div class="section-title" style="font-size:14px;">EVOLUÇÃO DO CMJ</div>',unsafe_allow_html=True)
-            pv=cd.pivot_table(index="Data",columns="Atleta",values="CMJ")
+            pv=cd.pivot_table(index="Data_dia",columns="Atleta",values="CMJ").interpolate(limit_area="inside")
             st.line_chart(pv,use_container_width=True,height=320)
         with c2:
             st.markdown('<div class="section-title" style="font-size:14px;">EVOLUÇÃO DO RSI</div>',unsafe_allow_html=True)
-            pv2=cd.pivot_table(index="Data",columns="Atleta",values="RSI")
+            pv2=cd.pivot_table(index="Data_dia",columns="Atleta",values="RSI").interpolate(limit_area="inside")
             st.line_chart(pv2,use_container_width=True,height=320)
 
 # ============================================================
